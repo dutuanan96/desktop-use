@@ -7,9 +7,6 @@
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%2F%20WSL-orange)](#)
-[![PyPI](https://img.shields.io/badge/pip%20install-desktop--use-purple)](https://pypi.org/project/desktop-use/)
-[![Downloads](https://img.shields.io/pypi/dm/desktop-use)](https://pypi.org/project/desktop-use/)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen)](#)
 
 </div>
 
@@ -37,12 +34,12 @@ If you're building an AI agent that needs to *do things on a computer*, this is 
 
 | Feature | Description |
 |---------|-------------|
-| 📸 **Screenshot** | Capture full screen or specific regions as PNG/BMP |
+| 📸 **Screenshot** | Capture full screen or specific regions |
 | 🔍 **OCR** | Extract text from any screen region (RapidOCR — no API key needed) |
 | 🎯 **Template Matching** | Find UI elements by image template (OpenCV-powered) |
 | 🖱️ **Mouse Control** | Click, double-click, right-click, drag, scroll at any coordinate |
-| ⌨️ **Keyboard Control** | Type text, press hotkeys, hold modifiers |
-| 🪟 **Window Management** | Find, focus, move, resize, minimize, maximize windows |
+| ⌨️ **Keyboard Control** | Type text (clipboard paste, bypasses IME), press hotkeys |
+| 🪟 **Window Management** | Find, focus, move, resize windows |
 | 📋 **Clipboard** | Read and write the system clipboard |
 | ⚡ **HTTP API** | RESTful API on port `8765` — works from any language |
 | 🔌 **WebSocket** | Real-time streaming on port `8766` — perfect for AI loops |
@@ -52,30 +49,24 @@ If you're building an AI agent that needs to *do things on a computer*, this is 
 ## 🖥️ Demo
 
 ```
- ██╗    ██╗ ██████╗ █████╗ ███████╗████████╗
- ██║    ██║██╔════╝██╔══██╗██╔════╝╚══██╔══╝
- ██║ █╗ ██║██║     ███████║███████╗   ██║
- ██║███╗██║██║     ██╔══██║╚════██║   ██║
- ╚███╔███╔╝╚██████╗██║  ██║███████║   ██║
-  ╚══╝╚══╝  ╚═════╝╚═╝  ╚═╝╚══════╝   ╚═╝
-   desktop-use v5.0 — AI-Powered Desktop Control
-```
+$ desktop-use serve
 
-**Server startup:**
-```
-$ desktop-use-server
-🖥️  desktop-use server v5.0
-├── HTTP API:  http://localhost:8765
-├── WebSocket: ws://localhost:8766
-└── Ready.
+ desktop_use server v0.1.0
+============================================================
+  HTTP API:     http://0.0.0.0:8765
+  WebSocket:    ws://0.0.0.0:8766
+  RapidOCR:     ON
+  OpenCV:       ON
+  FAILSAFE:     move mouse to top-left corner to abort
+============================================================
 ```
 
 **Health check:**
-```
+```json
 $ curl http://localhost:8765/health
 {
   "status": "ok",
-  "version": "5.0",
+  "version": "0.1.0",
   "uptime": 982.0,
   "ocr": true,
   "opencv": true,
@@ -87,7 +78,7 @@ $ curl http://localhost:8765/health
 
 ## 🚀 Quick Start
 
-### 1. Install
+### 1. Install (on Windows)
 
 ```bash
 pip install desktop-use
@@ -97,32 +88,32 @@ pip install desktop-use
 
 ```bash
 # Run in Windows PowerShell or CMD (not WSL)
-desktop-use-server
-```
-
-```
-🖥️  desktop-use server v0.1.0
-├── HTTP API:  http://localhost:8765
-├── WebSocket: ws://localhost:8766
-└── Ready.
+desktop-use serve
 ```
 
 ### 3. Run the Client (from WSL, Linux, or anywhere)
 
 ```python
-from desktop_use import DesktopClient
+from desktop_use.client import DesktopAgent
 
-client = DesktopClient("http://localhost:8765")
+agent = DesktopAgent()  # connects to localhost:8765
 
-# Take a screenshot
-screenshot = client.screenshot()
-screenshot.save("screen.png")
+# Take a screenshot + OCR
+result = agent.screenshot(ocr=True)
+print(f"Found {len(result['ocr'])} text items on screen")
 
 # Find and click a button
-template = client.find_template("submit_button.png")
-if template:
-    client.click(template.x, template.y)
-    print("Clicked submit!")
+result = agent.find_text("导入零件")
+if result["success"]:
+    x, y = result["data"]["center"]
+    agent.click(x, y)
+    print(f"Clicked at ({x}, {y})")
+
+# Type text (bypasses IME — works with Chinese, Vietnamese, English)
+agent.type_text("你好世界")
+
+# Press hotkey
+agent.hotkey("ctrl", "s")
 ```
 
 That's it. You're controlling Windows.
@@ -148,12 +139,12 @@ That's it. You're controlling Windows.
 │                                                         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │  Screenshot   │  │  OCR Engine  │  │   Template   │  │
-│  │  (PIL/GDI+)  │  │  (RapidOCR)  │  │  Matching    │  │
+│  │  (mss)        │  │  (RapidOCR)  │  │  Matching    │  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 │                                                         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
 │  │  Mouse &     │  │  Window Mgmt │  │  Clipboard   │  │
-│  │  Keyboard    │  │  (Win32 API)  │  │  (Win32)     │  │
+│  │  Keyboard    │  │  (pygetwin)  │  │  (PowerShell)│  │
 │  └──────────────┘  └──────────────┘  └──────────────┘  │
 └─────────────────────────────────────────────────────────┘
                         │
@@ -161,92 +152,85 @@ That's it. You're controlling Windows.
                Windows Desktop / Apps
 ```
 
-**Flow:** Your agent in WSL sends HTTP requests → desktop-use server on Windows executes native Win32 operations → results return as JSON.
+**Flow:** Your agent in WSL sends HTTP requests → desktop-use server on Windows executes native operations → results return as JSON.
 
 ---
 
 ## 📚 API Reference
 
+All actions go through `POST /action` with a JSON body:
+
+```bash
+curl -X POST http://localhost:8765/action \
+  -H "Content-Type: application/json" \
+  -d '{"action": "click", "x": 100, "y": 200}'
+```
+
 ### Screenshot
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/screenshot` | `GET` | Full-screen capture (returns PNG) |
-| `/screenshot?region=x,y,w,h` | `GET` | Capture specific region |
-| `/screenshot/base64` | `GET` | Full-screen as base64 JSON |
-
-### OCR
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/ocr` | `GET` | OCR entire screen |
-| `/ocr?region=x,y,w,h` | `GET` | OCR specific region |
-| `/ocr?region=x,y,w,h&lang=en` | `GET` | OCR with language hint |
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| `screenshot` | `name`, `ocr`, `base64`, `region` | Capture screen. `region`: `[x, y, w, h]` |
+| `ocr` | `path`, `region` | OCR an image or screen region |
+| `find_text` | `text`, `region` | Find text on screen, returns best match |
+| `find_all_text` | `text`, `region` | Find all text matches |
 
 ### Template Matching
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/find?template=name.png` | `GET` | Find template on screen, returns `{x, y, confidence}` |
-| `/find?template=name.png&threshold=0.8` | `GET` | Find with custom confidence threshold |
-| `/find/all?template=name.png` | `GET` | Find all matches on screen |
-| `/find?template=name.png&region=x,y,w,h` | `GET` | Find template in specific region |
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| `find_template` | `template`, `threshold`, `region` | Find template image on screen |
+| `find_all_templates` | `template`, `threshold`, `region` | Find all instances |
+
+Template images go in `templates/` folder (configurable via `DESKTOP_USE_DATA_DIR`).
 
 ### Mouse
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/click?x=100&y=200` | `POST` | Left click at coordinates |
-| `/click?x=100&y=200&button=right` | `POST` | Right click |
-| `/click?x=100&y=200&button=middle` | `POST` | Middle click |
-| `/doubleclick?x=100&y=200` | `POST` | Double click |
-| `/mousedown?x=100&y=200` | `POST` | Mouse button down |
-| `/mouseup?x=100&y=200` | `POST` | Mouse button up |
-| `/drag?x1=100&y1=200&x2=300&y2=400` | `POST` | Drag from point to point |
-| `/scroll?x=100&y=200&delta=3` | `POST` | Scroll (positive = up, negative = down) |
-| `/move?x=100&y=200` | `POST` | Move cursor without clicking |
-| `/position` | `GET` | Get current cursor position |
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| `click` | `x`, `y`, `button` | Click at coordinates. `button`: `left`/`right`/`middle` |
+| `double_click` | `x`, `y` | Double click |
+| `right_click` | `x`, `y` | Right click |
+| `move` | `x`, `y`, `duration` | Move cursor |
+| `drag` | `x1`, `y1`, `x2`, `y2`, `duration` | Drag from point to point |
+| `get_mouse` | — | Get current cursor position |
 
 ### Keyboard
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/type?text=hello` | `POST` | Type text string |
-| `/type?text=hello&interval=50` | `POST` | Type with delay between chars (ms) |
-| `/press?key=enter` | `POST` | Press a single key |
-| `/press?key=ctrl+c` | `POST` | Press key combination |
-| `/press?key=ctrl+shift+s` | `POST` | Multi-modifier combo |
-| `/keydown?key=shift` | `POST` | Hold key down |
-| `/keyup?key=shift` | `POST` | Release key |
-| `/hotkey?keys=ctrl+alt+delete` | `POST` | Simultaneous key press |
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| `type` | `text` | Type text via clipboard paste (bypasses IME) |
+| `hotkey` | `keys` | Press key combo, e.g. `["ctrl", "s"]` |
+| `press` | `key`, `presses` | Press a single key |
+| `scroll` | `amount`, `x`, `y` | Scroll (positive = up) |
 
 ### Window Management
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/windows` | `GET` | List all visible windows |
-| `/windows?title=Notepad` | `GET` | Find window by title (partial match) |
-| `/window/focus?title=Notepad` | `POST` | Focus/bring window to front |
-| `/window/move?title=Notepad&x=0&y=0&w=800&h=600` | `POST` | Move and resize window |
-| `/window/minimize?title=Notepad` | `POST` | Minimize window |
-| `/window/maximize?title=Notepad` | `POST` | Maximize window |
-| `/window/close?title=Notepad` | `POST` | Close window |
-| `/window/screenshot?title=Notepad` | `GET` | Screenshot of specific window |
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| `focus_window` | `title` | Focus window by title keyword |
+| `get_windows` | — | List all visible windows |
+| `get_active` | — | Get active window title |
+| `resize_window` | `title`, `width`, `height` | Resize window |
+| `move_window` | `title`, `x`, `y` | Move window |
 
 ### Clipboard
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/clipboard` | `GET` | Get clipboard text |
-| `/clipboard?text=hello` | `POST` | Set clipboard text |
-| `/clipboard/clear` | `POST` | Clear clipboard |
+| Action | Parameters | Description |
+|--------|-----------|-------------|
+| `clipboard_set` | `text` | Set clipboard text |
+| `clipboard_get` | — | Get clipboard text |
 
 ### System
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | `GET` | Server health check |
-| `/info` | `GET` | Server version and capabilities |
+| `/action` | `POST` | Execute any command (see above) |
+| `/batch` | `POST` | Execute multiple commands: `{"commands": [...]}` |
+| `/windows` | `GET` | List all windows |
+| `/mouse` | `GET` | Mouse position |
+| `/screen_size` | `GET` | Screen resolution |
 
 ---
 
@@ -255,85 +239,100 @@ That's it. You're controlling Windows.
 ### Basic Usage
 
 ```python
-from desktop_use import DesktopClient
+from desktop_use.client import DesktopAgent
 
-client = DesktopClient("http://localhost:8765")
+agent = DesktopAgent()
 
-# Screenshot
-screenshot = client.screenshot()
-screenshot.save("desktop.png")
+# Screenshot + OCR
+result = agent.screenshot(ocr=True)
+for item in result["ocr"]:
+    print(f"  {item['text']} at {item['center']}")
 
-# OCR — extract all text from screen
-text = client.ocr()
-print(text)
+# Click at coordinates
+agent.click(500, 300)
 
-# Click a button at specific coordinates
-client.click(500, 300)
+# Type text (clipboard paste — safe for Chinese/Vietnamese)
+agent.type_text("Hello, desktop-use!")
 
-# Type something
-client.type("Hello, desktop-use!")
+# Press hotkey
+agent.hotkey("ctrl", "s")
 
-# Press a hotkey
-client.hotkey("ctrl", "s")
+# Find text and click it
+result = agent.find_text("Submit")
+if result["success"]:
+    agent.click(*result["data"]["center"])
 ```
 
 ### Template Matching Workflow
 
 ```python
-from desktop_use import DesktopClient
+from desktop_use.client import DesktopAgent
 
-client = DesktopClient("http://localhost:8765")
+agent = DesktopAgent()
 
-# Find the "Submit" button on screen
-result = client.find_template("submit_button.png", threshold=0.85)
+# Find the "Submit" button by image
+result = agent.find_template("submit_button.png", threshold=0.85)
 
-if result:
-    print(f"Found button at ({result.x}, {result.y}) with {result.confidence:.1%} confidence")
-    client.click(result.x, result.y)
+if result["success"]:
+    x, y = result["data"]["center"]
+    conf = result["data"]["confidence"]
+    print(f"Found button at ({x}, {y}) with {conf:.1%} confidence")
+    agent.click(x, y)
 else:
-    print("Button not found — taking screenshot for debug")
-    client.screenshot().save("debug.png")
+    print("Button not found")
 ```
 
 ### AI Agent Loop
 
 ```python
-from desktop_use import DesktopClient
-import json
+from desktop_use.client import DesktopAgent
 
-client = DesktopClient("http://localhost:8765")
+agent = DesktopAgent()
 
-def agent_step(task_description: str) -> str:
+def agent_step(task: str) -> str:
     """One step of an AI agent loop."""
 
     # 1. See the screen
-    screenshot_b64 = client.screenshot_base64()
+    result = agent.screenshot(ocr=True, base64=True)
+    screenshot_b64 = result["base64"]
+    ocr_text = "\n".join(item["text"] for item in result["ocr"])
 
-    # 2. Read what's on screen
-    ocr_text = client.ocr()
-
-    # 3. Ask the AI what to do next
-    prompt = f"""You are controlling a Windows desktop.
-Task: {task_description}
-
-Current screen text (OCR):
+    # 2. Ask the AI what to do next
+    prompt = f"""Task: {task}
+Screen text:
 {ocr_text}
-
-What action should I take next? Reply with JSON:
+What action should I take? Reply JSON:
 {{"action": "click|type|press|hotkey", "params": {{...}}}}"""
 
-    # 4. Parse AI response (using your preferred LLM)
+    # 3. Parse AI response (using your preferred LLM)
     # response = call_llm(prompt)
     # action = json.loads(response)
 
-    # 5. Execute the action
-    # client.execute(action)
-    return "Action executed"
+    # 4. Execute
+    # agent.click(action["params"]["x"], action["params"]["y"])
+    return "Step done"
 
-# Run the loop
 for i in range(20):
-    result = agent_step("Open Notepad and write a hello world program")
+    result = agent_step("Open Notepad and write hello world")
     print(f"Step {i+1}: {result}")
+```
+
+### Batch Commands (faster)
+
+```python
+from desktop_use.client import DesktopAgent
+
+agent = DesktopAgent()
+
+# Send multiple commands in one request — much faster
+result = agent.batch([
+    {"action": "focus_window", "title": "Notepad"},
+    {"action": "type", "text": "Hello from desktop-use!"},
+    {"action": "hotkey", "keys": ["ctrl", "s"]},
+])
+
+for step in result["data"]:
+    print(f"  {step['cmd']}: {'✓' if step['result']['success'] else '✗'}")
 ```
 
 ---
@@ -342,47 +341,59 @@ for i in range(20):
 
 ```bash
 # Start the server
-desktop-use-server
+desktop-use serve
 
 # Start on custom port
-desktop-use-server --port 9000
-
-# Start with WebSocket enabled
-desktop-use-server --ws-port 8766
-
-# Start with verbose logging
-desktop-use-server --debug
+desktop-use serve --port 9000
 
 # Get help
-desktop-use-server --help
+desktop-use --help
 ```
 
-**Quick client from terminal (curl examples):**
+**Client CLI:**
 
 ```bash
 # Health check
-curl http://localhost:8765/health
+python -m desktop_use.client health
 
-# Screenshot → save to file
-curl -o screenshot.png http://localhost:8765/screenshot
+# Screenshot
+python -m desktop_use.client screenshot
 
-# OCR → get text
-curl http://localhost:8765/ocr
+# Screenshot + OCR
+python -m desktop_use.client screenshot ocr
 
-# Click at coordinates
-curl -X POST "http://localhost:8765/click?x=500&y=300"
+# Find text
+python -m desktop_use.client find_text "Submit"
+
+# Click
+python -m desktop_use.client click 500 300
 
 # Type text
-curl -X POST "http://localhost:8765/type?text=Hello+World"
+python -m desktop_use.client type "Hello World"
 
-# Press hotkey
-curl -X POST "http://localhost:8765/hotkey?keys=ctrl+c"
+# List windows
+python -m desktop_use.client windows
+
+# Focus window
+python -m desktop_use.client focus "Notepad"
+```
+
+**curl examples:**
+
+```bash
+# Health
+curl http://localhost:8765/health
+
+# Click
+curl -X POST http://localhost:8765/action \
+  -d '{"action":"click","x":500,"y":300}'
+
+# Find text
+curl -X POST http://localhost:8765/action \
+  -d '{"action":"find_text","text":"Submit"}'
 
 # List windows
 curl http://localhost:8765/windows
-
-# Find template
-curl "http://localhost:8765/find?template=button.png"
 ```
 
 ---
@@ -393,18 +404,17 @@ curl "http://localhost:8765/find?template=button.png"
 |---------|:--------------:|:---------------------:|:---------:|:---------:|
 | **Runs locally** | ✅ | ❌ (API only) | ✅ | ✅ |
 | **HTTP API** | ✅ | ❌ | ❌ | ❌ |
-| **WSL / Linux → Windows** | ✅ | ❌ | ❌ | ❌ |
+| **WSL → Windows** | ✅ | ❌ | ❌ | ❌ |
 | **OCR built-in** | ✅ | ✅ | ✅ | ❌ |
 | **Template matching** | ✅ | ❌ | ❌ | ❌ |
 | **Window management** | ✅ | Limited | Limited | ❌ |
 | **WebSocket streaming** | ✅ | ❌ | ❌ | ❌ |
 | **Works with any AI** | ✅ | Claude only | Multiple | ✅ |
-| **Setup complexity** | `pip install` | API key + sandbox | Docker | `pip install` |
-| **Offline / air-gapped** | ✅ | ❌ | Partial | ✅ |
+| **Setup** | `pip install` | API key + sandbox | Docker | `pip install` |
 | **Data leaves machine** | ❌ Never | ✅ Sent to API | ❌ | ❌ Never |
 | **License** | MIT | Proprietary | Apache 2.0 | BSD |
 
-> **TL;DR:** Anthropic's computer_use is powerful but requires sending screenshots to their API. desktop-use gives you the same capabilities **entirely locally** with a clean HTTP interface any framework can use.
+> **TL;DR:** Anthropic's computer_use requires sending screenshots to their API. desktop-use gives you the same capabilities **entirely locally** with a clean HTTP interface any framework can use.
 
 ---
 
@@ -413,33 +423,32 @@ curl "http://localhost:8765/find?template=button.png"
 ### Hermes Agent
 
 ```python
-# Use desktop-use as a Hermes tool
-from desktop_use import DesktopClient
+from desktop_use.client import DesktopAgent
 
-client = DesktopClient("http://localhost:8765")
+agent = DesktopAgent()
 
 # Hermes can now take actions:
-screenshot = client.screenshot()  # "See" the screen
-text = client.ocr()              # "Read" the screen
-client.click(x, y)              # "Act" on the screen
+screenshot = agent.screenshot()  # "See" the screen
+text = agent.ocr()              # "Read" the screen
+agent.click(x, y)               # "Act" on the screen
 ```
 
 ### Claude (Anthropic) — computer_use replacement
 
 ```python
 from anthropic import Anthropic
-from desktop_use import DesktopClient
+from desktop_use.client import DesktopAgent
 
-client = DesktopClient("http://localhost:8765")
+agent = DesktopAgent()
 claude = Anthropic()
 
 def claude_computer_use(task: str):
-    """Use Claude with local desktop control — no Anthropic computer_use API needed."""
+    """Use Claude with local desktop control."""
 
     for _ in range(25):
-        # Get screen state locally (no data sent to Anthropic except prompt)
-        screenshot_b64 = client.screenshot_base64()
-        ocr_text = client.ocr()
+        # Get screen state locally
+        result = agent.screenshot(ocr=True, base64=True)
+        ocr_text = "\n".join(i["text"] for i in result["ocr"])
 
         response = claude.messages.create(
             model="claude-sonnet-4-20250514",
@@ -447,105 +456,77 @@ def claude_computer_use(task: str):
             messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"Task: {task}\nScreen text: {ocr_text}"},
+                    {"type": "text", "text": f"Task: {task}\nScreen: {ocr_text}"},
                     {"type": "image", "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": screenshot_b64,
+                        "type": "base64", "media_type": "image/png",
+                        "data": result["base64"],
                     }},
                 ],
             }],
         )
-
         # Parse and execute Claude's suggested action
-        # action = parse_claude_response(response)
-        # client.execute(action)
 ```
 
 ### LangChain
 
 ```python
 from langchain.agents import initialize_agent, Tool
-from desktop_use import DesktopClient
+from desktop_use.client import DesktopAgent
 
-client = DesktopClient("http://localhost:8765")
+agent = DesktopAgent()
 
-# Define tools for LangChain
 tools = [
-    Tool(name="screenshot", func=lambda _: str(client.screenshot_base64())[:50],
-         description="Take a screenshot of the current desktop"),
-    Tool(name="read_screen", func=lambda _: client.ocr(),
+    Tool(name="screenshot", func=lambda _: str(agent.screenshot()["path"]),
+         description="Take a screenshot"),
+    Tool(name="read_screen", func=lambda _: str(agent.ocr()),
          description="Read all text on screen via OCR"),
-    Tool(name="click", func=lambda coords: client.click(*map(int, coords.split(","))),
-         description="Click at x,y coordinates. Input: 'x,y'"),
-    Tool(name="type_text", func=lambda text: client.type(text),
-         description="Type text on the keyboard"),
+    Tool(name="click", func=lambda coords: agent.click(*map(int, coords.split(","))),
+         description="Click at x,y. Input: 'x,y'"),
+    Tool(name="type_text", func=lambda text: agent.type_text(text),
+         description="Type text on keyboard"),
 ]
 
-agent = initialize_agent(tools, llm, agent="zero-shot-react-description")
-agent.run("Open Notepad and type a poem")
-```
-
-### OpenAI Function Calling
-
-```python
-import openai
-from desktop_use import DesktopClient
-
-client = DesktopClient("http://localhost:8765")
-
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "screenshot",
-            "description": "Capture the current desktop screen",
-            "parameters": {},
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "click",
-            "description": "Click at specific screen coordinates",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {"type": "integer", "description": "X coordinate"},
-                    "y": {"type": "integer", "description": "Y coordinate"},
-                },
-                "required": ["x", "y"],
-            },
-        }
-    },
-]
-
-# Then use with openai.chat.completions.create(tools=tools, ...)
+# agent = initialize_agent(tools, llm, agent="zero-shot-react-description")
+# agent.run("Open Notepad and type a poem")
 ```
 
 ---
 
-## 🤝 Contributing
+## 📦 Installation
 
-Contributions are welcome! Here's how to get started:
+### From source
 
-1. **Fork** the repository
-2. **Clone** your fork: `git clone https://github.com/YOUR_USERNAME/desktop-use.git`
-3. **Create** a branch: `git checkout -b feature/awesome-feature`
-4. **Install** dev dependencies: `pip install -e ".[dev]"`
-5. **Make** your changes
-6. **Test** your changes: `pytest tests/`
-7. **Commit** and **push**: `git push origin feature/awesome-feature`
-8. **Open** a Pull Request
+```bash
+git clone https://github.com/dutuanan96/desktop-use.git
+cd desktop-use
+pip install -e ".[dev]"
+```
 
-### Ideas for contributions:
-- 🐛 Bug fixes and issue reports
-- 📸 New screenshot formats (JPEG, WebP)
-- 🔍 Additional OCR languages
-- 🪟 Cross-platform support (macOS, Linux native)
-- 📖 Documentation improvements
-- 🧪 More test coverage
-- 🔌 Plugin system for custom actions
+### Requirements
+
+- **Python** 3.10+
+- **Windows** (server runs natively on Windows)
+- **WSL/Linux** (client can run from anywhere)
+
+### Dependencies (auto-installed)
+
+`fastapi` · `uvicorn` · `pyautogui` · `mss` · `pygetwindow` · `rapidocr-onnxruntime` · `opencv-python` · `requests` · `websockets` · `pillow`
+
+---
+
+## 🧪 Development
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+python -m pytest tests/ -v
+
+# Lint
+ruff check desktop_use/
+ruff format --check desktop_use/
+```
 
 ---
 
@@ -553,36 +534,12 @@ Contributions are welcome! Here's how to get started:
 
 MIT License — see [LICENSE](LICENSE) for details.
 
-```
-MIT License
-
-Copyright (c) 2025 An Du
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
 ---
 
 <div align="center">
 
-**Made with ❤️ by [An Du](https://github.com/dutuanan96)**
+**Built with ❤️ for the AI agent community**
 
-⭐ If this project helps you, please give it a star — it motivates continued development!
+⭐ Star this repo if you find it useful!
 
 </div>

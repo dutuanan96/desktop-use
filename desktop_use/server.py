@@ -911,7 +911,7 @@ def _run_ws_server() -> None:
 def main() -> None:
     """Start the desktop_use server (HTTP + WebSocket)."""
     log.info("=" * 60)
-    log.info("  desktop_use server v1.0.0")
+    log.info("  desktop_use server v0.1.0")
     log.info("  HTTP API:     http://%s:%d", HOST, HTTP_PORT)
     log.info("  WebSocket:    ws://%s:%d", HOST, WS_PORT)
     log.info("  Data dir:     %s", _DATA_DIR)
