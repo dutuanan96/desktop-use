@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "desktop-use"
+version = "0.1.0"
+description = "Desktop automation API for AI agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "An Du" },
+]
+keywords = ["desktop", "automation", "api", "ai", "agents"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pyautogui",
+    "mss",
+    "pygetwindow",
+    "rapidocr-onnxruntime",
+    "opencv-python",
+    "requests",
+    "websockets",
+    "pillow",
+]
+
+[project.urls]
+Homepage = "https://github.com/dutuanan96/desktop-use"
+Repository = "https://github.com/dutuanan96/desktop-use"
+Issues = "https://github.com/dutuanan96/desktop-use/issues"
+
+[project.scripts]
+desktop-use = "desktop_use.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["desktop_use"]
