@@ -332,23 +332,45 @@ class DesktopAgent:
 
     # ── Mouse ─────────────────────────────────────────────────────────────
 
-    def click(self, x: int, y: int, button: str = "left") -> dict[str, Any]:
+    def click(self, x: int, y: int, button: str = "left", window_title: str | None = None) -> dict[str, Any]:
         """Click at the given coordinates.
 
         Args:
             x: Horizontal pixel coordinate.
             y: Vertical pixel coordinate.
             button: ``"left"``, ``"right"``, or ``"middle"``.
+            window_title: If provided, use PostMessage (cursor doesn't move).
         """
-        return self._post("click", x=x, y=y, button=button)
+        kwargs: dict[str, Any] = {"x": x, "y": y, "button": button}
+        if window_title:
+            kwargs["window_title"] = window_title
+        return self._post("click", **kwargs)
 
-    def double_click(self, x: int, y: int) -> dict[str, Any]:
-        """Double-click at the given coordinates."""
-        return self._post("double_click", x=x, y=y)
+    def double_click(self, x: int, y: int, window_title: str | None = None) -> dict[str, Any]:
+        """Double-click at the given coordinates.
 
-    def right_click(self, x: int, y: int) -> dict[str, Any]:
-        """Right-click at the given coordinates."""
-        return self._post("right_click", x=x, y=y)
+        Args:
+            x: Horizontal pixel coordinate.
+            y: Vertical pixel coordinate.
+            window_title: If provided, use PostMessage (cursor doesn't move).
+        """
+        kwargs: dict[str, Any] = {"x": x, "y": y}
+        if window_title:
+            kwargs["window_title"] = window_title
+        return self._post("double_click", **kwargs)
+
+    def right_click(self, x: int, y: int, window_title: str | None = None) -> dict[str, Any]:
+        """Right-click at the given coordinates.
+
+        Args:
+            x: Horizontal pixel coordinate.
+            y: Vertical pixel coordinate.
+            window_title: If provided, use PostMessage (cursor doesn't move).
+        """
+        kwargs: dict[str, Any] = {"x": x, "y": y}
+        if window_title:
+            kwargs["window_title"] = window_title
+        return self._post("right_click", **kwargs)
 
     def move(self, x: int, y: int, duration: float = 0.3) -> dict[str, Any]:
         """Move the mouse cursor to the given coordinates.
@@ -389,7 +411,7 @@ class DesktopAgent:
 
     # ── Keyboard ──────────────────────────────────────────────────────────
 
-    def type_text(self, text: str) -> dict[str, Any]:
+    def type_text(self, text: str, window_title: str | None = None) -> dict[str, Any]:
         """Type text using clipboard paste (bypasses IME for Chinese etc.).
 
         The text is placed on the Windows clipboard and then pasted with
@@ -398,16 +420,24 @@ class DesktopAgent:
 
         Args:
             text: The string to type.
+            window_title: If provided, use PostMessage (cursor doesn't move).
         """
-        return self._post("type", text=text)
+        kwargs: dict[str, Any] = {"text": text}
+        if window_title:
+            kwargs["window_title"] = window_title
+        return self._post("type", **kwargs)
 
-    def hotkey(self, *keys: str) -> dict[str, Any]:
+    def hotkey(self, *keys: str, window_title: str | None = None) -> dict[str, Any]:
         """Press a key combination.
 
         Args:
             *keys: Individual key names, e.g. ``hotkey("ctrl", "c")``.
+            window_title: If provided, use PostMessage (cursor doesn't move).
         """
-        return self._post("hotkey", keys=list(keys))
+        kwargs: dict[str, Any] = {"keys": list(keys)}
+        if window_title:
+            kwargs["window_title"] = window_title
+        return self._post("hotkey", **kwargs)
 
     def press(self, key: str, presses: int = 1) -> dict[str, Any]:
         """Press a single key one or more times.

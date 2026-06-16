@@ -126,6 +126,19 @@ try:
 except Exception as exc:
     log.warning("RapidOCR unavailable: %s", exc)
 
+def _prewarm_ocr():
+    """Run a dummy OCR call to load model weights into memory."""
+    if ocr_engine is None:
+        return
+    try:
+        dummy = numpy.zeros((64, 200, 3), dtype=numpy.uint8)
+        ocr_engine(dummy)
+        log.info("OCR engine warmed up")
+    except Exception as exc:
+        log.warning("OCR warm-up failed: %s", exc)
+
+
+
 # Optional: OpenCV
 cv2 = _import_optional("cv2", "pip install opencv-python")
 
@@ -138,6 +151,35 @@ _start_time: float = time.time()
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
+
+def encode_screenshot(
+    img_array: numpy.ndarray,
+    fmt: str = "JPEG",
+    quality: int = 80,
+    scale: float = 1.0,
+) -> tuple:
+    """Convert numpy array to compressed base64 string.
+    Returns (base64_string, (width, height)).
+    """
+    rgb = img_array[:, :, :3][:, :, ::-1]  # BGRA -> RGB
+    img = PIL_Image.fromarray(rgb)
+
+    if scale != 1.0:
+        new_w = int(img.width * scale)
+        new_h = int(img.height * scale)
+        img = img.resize((new_w, new_h), PIL_Image.LANCZOS)
+
+    buf = io.BytesIO()
+    if fmt == "JPEG":
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+    elif fmt == "WEBP":
+        img.save(buf, format="WEBP", quality=quality, method=4)
+    else:
+        img.save(buf, format="PNG", optimize=True)
+
+    encoded = base64.b64encode(buf.getvalue()).decode()
+    return encoded, (img.width, img.height)
+
 
 
 def uptime() -> float:
@@ -521,6 +563,147 @@ class WindowManager:
 window_manager = WindowManager()
 
 # ---------------------------------------------------------------------------
+# PostMessage input isolation (click/type without moving cursor)
+# ---------------------------------------------------------------------------
+
+import ctypes
+import ctypes.wintypes
+
+_user32 = ctypes.windll.user32
+
+def _find_hwnd(title_contains: str):
+    """Find a window handle by partial title match."""
+    import win32gui
+    result = []
+    def callback(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if title_contains.lower() in title.lower():
+                result.append(hwnd)
+        return True
+    win32gui.EnumWindows(callback, None)
+    return result[0] if result else None
+
+
+def _screen_to_client(hwnd: int, screen_x: int, screen_y: int):
+    """Convert screen coordinates to window-relative coordinates."""
+    pt = ctypes.wintypes.POINT(screen_x, screen_y)
+    _user32.ScreenToClient(hwnd, ctypes.byref(pt))
+    return pt.x, pt.y
+
+
+def post_click(hwnd: int, x: int, y: int, button: str = "left", double: bool = False):
+    """Click at screen coordinates inside window hwnd.
+    Cursor does NOT move. Window does NOT need focus.
+    """
+    import win32gui
+    import win32con
+    import win32api
+
+    cx, cy = _screen_to_client(hwnd, x, y)
+    lparam = win32api.MAKELONG(cx, cy)
+
+    if button == "left":
+        down_msg = win32con.WM_LBUTTONDOWN
+        up_msg = win32con.WM_LBUTTONUP
+        wparam = win32con.MK_LBUTTON
+    elif button == "right":
+        down_msg = win32con.WM_RBUTTONDOWN
+        up_msg = win32con.WM_RBUTTONUP
+        wparam = win32con.WM_RBUTTON
+    else:
+        down_msg = win32con.WM_MBUTTONDOWN
+        up_msg = win32con.WM_MBUTTONUP
+        wparam = win32con.WM_MBUTTON
+
+    win32gui.PostMessage(hwnd, down_msg, wparam, lparam)
+    time.sleep(0.05)
+    win32gui.PostMessage(hwnd, up_msg, 0, lparam)
+
+    if double:
+        time.sleep(0.08)
+        win32gui.PostMessage(hwnd, down_msg, wparam, lparam)
+        time.sleep(0.05)
+        win32gui.PostMessage(hwnd, up_msg, 0, lparam)
+
+
+def post_type(hwnd: int, text: str):
+    """Type text into a window without focusing it.
+    Uses clipboard paste (handles Unicode, Chinese, Vietnamese).
+    """
+    import win32gui
+    import win32con
+
+    # Set clipboard via PowerShell
+    escaped = text.replace('"', '`"')
+    _powershell(f'Set-Clipboard -Value \"{escaped}\"')
+    time.sleep(0.1)
+
+    # Send Ctrl+V to the window
+    post_hotkey(hwnd, "v", ctrl=True)
+
+
+def post_hotkey(hwnd: int, key: str, ctrl: bool = False, shift: bool = False, alt: bool = False):
+    """Send a hotkey combination to a window without focusing it."""
+    import win32gui
+    import win32con
+
+    VK_MAP = {
+        "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45,
+        "f": 0x46, "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A,
+        "k": 0x4B, "l": 0x4C, "m": 0x4D, "n": 0x4E, "o": 0x4F,
+        "p": 0x50, "q": 0x51, "r": 0x52, "s": 0x53, "t": 0x54,
+        "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58, "y": 0x59,
+        "z": 0x5A, "enter": 0x0D, "tab": 0x09, "escape": 0x1B,
+        "delete": 0x2E, "backspace": 0x08,
+        "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73, "f5": 0x74,
+        "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28,
+    }
+    vk = VK_MAP.get(key.lower(), ord(key.upper()))
+
+    def _lparam(vk_code, extended=False):
+        scan = _user32.MapVirtualKeyW(vk_code, 0)
+        lp = (scan << 16) | 1
+        if extended:
+            lp |= (1 << 24)
+        return lp
+
+    # Press modifiers
+    if ctrl:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, win32con.VK_CONTROL, _lparam(win32con.VK_CONTROL))
+    if shift:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, win32con.VK_SHIFT, _lparam(win32con.VK_SHIFT))
+    if alt:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, win32con.VK_MENU, _lparam(win32con.VK_MENU))
+
+    # Press key
+    win32gui.PostMessage(hwnd, win32con.WM_KEYDOWN, vk, _lparam(vk))
+    time.sleep(0.05)
+    win32gui.PostMessage(hwnd, win32con.WM_KEYUP, vk, _lparam(vk) | (1 << 30) | (1 << 31))
+
+    # Release modifiers (reverse order)
+    if alt:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYUP, win32con.VK_MENU, _lparam(win32con.VK_MENU) | (1 << 31))
+    if shift:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYUP, win32con.VK_SHIFT, _lparam(win32con.VK_SHIFT) | (1 << 31))
+    if ctrl:
+        win32gui.PostMessage(hwnd, win32con.WM_KEYUP, win32con.VK_CONTROL, _lparam(win32con.VK_CONTROL) | (1 << 31))
+
+
+def post_scroll(hwnd: int, x: int, y: int, amount: int):
+    """Scroll at a position in a window. amount: positive=up, negative=down."""
+    import win32gui
+    import win32con
+    import win32api
+
+    # WM_MOUSEWHEEL uses screen coords, not client coords
+    lparam = win32api.MAKELONG(x, y)
+    wparam = win32api.MAKELONG(0, amount * win32con.WHEEL_DELTA)
+    win32gui.PostMessage(hwnd, win32con.WM_MOUSEWHEEL, wparam, lparam)
+
+
+
+# ---------------------------------------------------------------------------
 # Command executor
 # ---------------------------------------------------------------------------
 
@@ -631,27 +814,37 @@ def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
 
         # ── Mouse ──────────────────────────────────────────────────────────
         elif action == "click":
-            pyautogui.click(
-                cmd["x"], cmd["y"], button=cmd.get("button", "left")
-            )
-            return {
-                "success": True,
-                "data": f"Clicked ({cmd['x']}, {cmd['y']})",
-            }
+            x, y, button = cmd["x"], cmd["y"], cmd.get("button", "left")
+            win_title = cmd.get("window_title")
+            if win_title:
+                hwnd = _find_hwnd(win_title)
+                if hwnd:
+                    post_click(hwnd, x, y, button)
+                    return {"success": True, "data": f"PostMessage click ({x}, {y}) on {win_title}"}
+            pyautogui.click(x, y, button=button)
+            return {"success": True, "data": f"Clicked ({x}, {y})"}
 
         elif action == "double_click":
-            pyautogui.doubleClick(cmd["x"], cmd["y"])
-            return {
-                "success": True,
-                "data": f"Double-clicked ({cmd['x']}, {cmd['y']})",
-            }
+            x, y = cmd["x"], cmd["y"]
+            win_title = cmd.get("window_title")
+            if win_title:
+                hwnd = _find_hwnd(win_title)
+                if hwnd:
+                    post_click(hwnd, x, y, "left", double=True)
+                    return {"success": True, "data": f"PostMessage double-click ({x}, {y}) on {win_title}"}
+            pyautogui.doubleClick(x, y)
+            return {"success": True, "data": f"Double-clicked ({x}, {y})"}
 
         elif action == "right_click":
-            pyautogui.rightClick(cmd["x"], cmd["y"])
-            return {
-                "success": True,
-                "data": f"Right-clicked ({cmd['x']}, {cmd['y']})",
-            }
+            x, y = cmd["x"], cmd["y"]
+            win_title = cmd.get("window_title")
+            if win_title:
+                hwnd = _find_hwnd(win_title)
+                if hwnd:
+                    post_click(hwnd, x, y, "right")
+                    return {"success": True, "data": f"PostMessage right-click ({x}, {y}) on {win_title}"}
+            pyautogui.rightClick(x, y)
+            return {"success": True, "data": f"Right-clicked ({x}, {y})"}
 
         elif action == "move":
             pyautogui.moveTo(
@@ -677,15 +870,25 @@ def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
 
         # ── Keyboard ───────────────────────────────────────────────────────
         elif action == "type":
+            win_title = cmd.get("window_title")
+            if win_title:
+                hwnd = _find_hwnd(win_title)
+                if hwnd:
+                    post_type(hwnd, cmd["text"])
+                    return {"success": True, "data": f"PostMessage type on {win_title}"}
             clipboard_type(cmd["text"])
             return {"success": True, "data": "Typed via clipboard paste"}
 
         elif action == "hotkey":
-            pyautogui.hotkey(*cmd["keys"])
-            return {
-                "success": True,
-                "data": f"Pressed {'+'.join(cmd['keys'])}",
-            }
+            keys = cmd["keys"]
+            win_title = cmd.get("window_title")
+            if win_title:
+                hwnd = _find_hwnd(win_title)
+                if hwnd:
+                    post_hotkey(hwnd, keys[-1], ctrl="ctrl" in keys, shift="shift" in keys, alt="alt" in keys)
+                    return {"success": True, "data": f"PostMessage hotkey {'+'.join(keys)} on {win_title}"}
+            pyautogui.hotkey(*keys)
+            return {"success": True, "data": f"Pressed {'+'.join(keys)}"}
 
         elif action == "press":
             pyautogui.press(cmd["key"], presses=cmd.get("presses", 1))
@@ -921,7 +1124,8 @@ def main() -> None:
     log.info("  FAILSAFE:     move mouse to top-left corner to abort")
     log.info("=" * 60)
 
-    # Capture an initial screenshot so the system is warmed up
+    # Warm up OCR engine and take initial screenshot
+    _prewarm_ocr()
     try:
         screenshot_engine.capture(name="initial_screen.png")
     except Exception as exc:
