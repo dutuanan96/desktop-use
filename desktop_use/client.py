@@ -110,38 +110,6 @@ class DesktopAgent:
         self.timeout = timeout
 
 
-    # ── Virtual Display ─────────────────────────────────────────────────
-
-    def get_virtual_monitors(self) -> dict[str, Any]:
-        """List all monitors including virtual ones.
-
-        Returns:
-            ``{"success": True, "data": [{"rect": ..., "is_primary": bool, ...}, ...]}``
-        """
-        return self._post("get_virtual_monitors")
-
-    def get_virtual_monitor(self) -> dict[str, Any]:
-        """Get the virtual display (first non-primary monitor).
-
-        Returns:
-            ``{"success": True, "data": {"rect": [x,y,x2,y2], ...}}``
-            or ``{"success": False, "error": "No virtual display found"}``
-        """
-        return self._post("get_virtual_monitor")
-
-    def setup_workspace(self, window_titles: list[str]) -> dict[str, Any]:
-        """Move specified windows to the virtual display.
-
-        After this, AI controls virtual display, user has physical display.
-
-        Args:
-            window_titles: List of window title keywords to move.
-
-        Returns:
-            ``{"success": True, "virtual_monitor": ..., "moved_windows": [...]}``
-        """
-        return self._post("setup_workspace", window_titles=window_titles)
-
     def __repr__(self) -> str:
         return f"DesktopAgent(url={self.base_url!r})"
 

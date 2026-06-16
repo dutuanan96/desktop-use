@@ -1185,35 +1185,6 @@ async def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
                 time.sleep(0.1)
             return {"success": True, "data": results}
 
-        # ── Virtual Display ─────────────────────────────────────────────
-        elif action == "get_virtual_monitors":
-            monitors = get_all_monitors()
-            return {"success": True, "data": monitors}
-
-        elif action == "get_virtual_monitor":
-            virt = get_virtual_monitor()
-            if virt:
-                return {"success": True, "data": virt}
-            return {"success": False, "error": "No virtual display found. Install Parsec Virtual Display first."}
-
-        elif action == "setup_workspace":
-            virt = get_virtual_monitor()
-            if not virt:
-                return {"success": False, "error": "No virtual display found. Install Parsec Virtual Display first."}
-            
-            moved = []
-            for title in cmd.get("window_titles", []):
-                hwnd = _find_hwnd(title)
-                if hwnd:
-                    move_window_to_monitor(hwnd, virt)
-                    moved.append({"title": title, "hwnd": hwnd})
-            
-            return {
-                "success": True,
-                "virtual_monitor": virt,
-                "moved_windows": moved,
-            }
-
         else:
             return {"success": False, "error": f"Unknown action: {action}"}
 
