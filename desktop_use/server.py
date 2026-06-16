@@ -863,6 +863,65 @@ class ScreenBuffer:
 # Global instance
 _screenshot_buffer = ScreenBuffer(fps=5.0)
 
+
+# ---------------------------------------------------------------------------
+# Virtual Display (Parsec Virtual Display)
+# ---------------------------------------------------------------------------
+
+def get_all_monitors() -> list:
+    """List all monitors including virtual ones."""
+    import ctypes
+    monitors = []
+    
+    def callback(hmonitor, hdc, lprect, lparam):
+        import win32api
+        info = win32api.GetMonitorInfo(hmonitor)
+        monitors.append({
+            "handle": hmonitor,
+            "rect": info["Monitor"],
+            "work_rect": info["Work"],
+            "is_primary": bool(info["Flags"] & 1),
+            "name": info.get("Device", ""),
+        })
+        return True
+    
+    MONITORENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_long)
+    ctypes.windll.user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(callback), 0)
+    return monitors
+
+
+def get_virtual_monitor() -> dict | None:
+    """Return the first non-primary monitor (assumed to be virtual)."""
+    monitors = get_all_monitors()
+    for m in monitors:
+        if not m["is_primary"]:
+            return m
+    return None
+
+
+def move_window_to_monitor(hwnd: int, monitor: dict):
+    """Move a window to a specific monitor and maximize it."""
+    import win32gui
+    import win32con
+    
+    rect = monitor["rect"]
+    mon_x, mon_y = rect[0], rect[1]
+    mon_w = rect[2] - rect[0]
+    mon_h = rect[3] - rect[1]
+    
+    # Move window to virtual monitor
+    win32gui.SetWindowPos(
+        hwnd,
+        win32con.HWND_TOP,
+        mon_x, mon_y,
+        mon_w, mon_h,
+        win32con.SWP_SHOWWINDOW,
+    )
+    
+    # Maximize on that monitor
+    win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+
+
 async def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
     """Execute a single automation command and return the result.
 
@@ -1100,6 +1159,35 @@ async def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
                     break
                 time.sleep(0.1)
             return {"success": True, "data": results}
+
+        # ── Virtual Display ─────────────────────────────────────────────
+        elif action == "get_virtual_monitors":
+            monitors = get_all_monitors()
+            return {"success": True, "data": monitors}
+
+        elif action == "get_virtual_monitor":
+            virt = get_virtual_monitor()
+            if virt:
+                return {"success": True, "data": virt}
+            return {"success": False, "error": "No virtual display found. Install Parsec Virtual Display first."}
+
+        elif action == "setup_workspace":
+            virt = get_virtual_monitor()
+            if not virt:
+                return {"success": False, "error": "No virtual display found. Install Parsec Virtual Display first."}
+            
+            moved = []
+            for title in cmd.get("window_titles", []):
+                hwnd = _find_hwnd(title)
+                if hwnd:
+                    move_window_to_monitor(hwnd, virt)
+                    moved.append({"title": title, "hwnd": hwnd})
+            
+            return {
+                "success": True,
+                "virtual_monitor": virt,
+                "moved_windows": moved,
+            }
 
         else:
             return {"success": False, "error": f"Unknown action: {action}"}

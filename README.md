@@ -543,3 +543,42 @@ MIT License — see [LICENSE](LICENSE) for details.
 ⭐ Star this repo if you find it useful!
 
 </div>
+
+
+## Virtual Display Setup (Optional)
+
+For complete isolation (AI on separate screen), install Parsec Virtual Display:
+
+### 1. Install Parsec
+```cmd
+winget install Parsec.Parsec
+```
+
+### 2. Enable Virtual Display
+1. Open Parsec app
+2. Go to Settings → Host
+3. Enable "Virtual Display"
+4. Set resolution (e.g., 1920x1080)
+
+### 3. Use in Code
+```python
+from desktop_use.client import DesktopAgent
+
+agent = DesktopAgent()
+
+# Move Chrome to virtual display
+agent.setup_workspace(["Chrome", "ERPNext"])
+
+# Now AI works on virtual display, user works on physical display
+# All screenshots and OCR will be from virtual display only
+agent.screenshot(ocr=True)  # Captures virtual display
+agent.click(100, 200, window_title="Chrome")  # Clicks on virtual display
+```
+
+### 4. How It Works
+- Physical monitor: YOUR work
+- Virtual monitor: AI's workspace
+- AI uses PostMessage (cursor doesn't move)
+- AI captures only virtual display region
+- Complete isolation!
+
