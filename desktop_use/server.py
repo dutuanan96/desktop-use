@@ -491,6 +491,28 @@ template_engine = TemplateEngine()
 # ---------------------------------------------------------------------------
 
 
+
+def get_windows_with_timeout(timeout: float = 2.0) -> list:
+    """List windows with timeout to prevent hanging."""
+    result = []
+    def _fetch():
+        try:
+            import pygetwindow as gw
+            for w in gw.getAllWindows():
+                if w.visible and w.title:
+                    result.append({
+                        "title": w.title,
+                        "left": w.left, "top": w.top,
+                        "width": w.width, "height": w.height,
+                        "active": w.isActive,
+                    })
+        except Exception:
+            pass
+    t = threading.Thread(target=_fetch, daemon=True)
+    t.start()
+    t.join(timeout)
+    return result
+
 class WindowManager:
     """Manage visible windows via pygetwindow."""
 
@@ -774,6 +796,73 @@ def run_ocr(image_path: str) -> list:
                 })
     return items
 
+import threading
+from collections import deque
+
+class ScreenBuffer:
+    """Continuously captures screen in background thread.
+    Latest frame always available with near-zero latency.
+    """
+    def __init__(self, fps: float = 5.0, monitor: int = 1):
+        self.fps = fps
+        self.monitor = monitor
+        self._frames: deque = deque(maxlen=3)
+        self._lock = threading.Lock()
+        self._running = False
+        self._thread: threading.Thread | None = None
+        self._capture_times: deque = deque(maxlen=30)
+
+    def start(self):
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="ScreenBuffer")
+        self._thread.start()
+
+    def stop(self):
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=2.0)
+
+    def _loop(self):
+        interval = 1.0 / self.fps
+        with mss_lib.mss() as sct:
+            monitor = sct.monitors[self.monitor]
+            while self._running:
+                t0 = time.monotonic()
+                raw = sct.grab(monitor)
+                # Convert to PIL Image
+                if PIL_Image:
+                    img = PIL_Image.frombytes("RGB", raw.size, raw.rgb)
+                    self._frames.append((img, time.monotonic()))
+                elapsed = time.monotonic() - t0
+                sleep_time = max(0.0, interval - elapsed)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+    def get_latest(self, max_age_ms: float = 250.0):
+        """Return most recent frame if fresh enough."""
+        with self._lock:
+            if not self._frames:
+                return None
+            img, timestamp = self._frames[-1]
+            age_ms = (time.monotonic() - timestamp) * 1000
+            if age_ms <= max_age_ms:
+                return img
+        return None
+
+    def get_or_capture(self, max_age_ms: float = 250.0):
+        """Return cached frame or capture fresh if stale."""
+        frame = self.get_latest(max_age_ms)
+        if frame:
+            return frame
+        # Fallback to fresh capture
+        with mss_lib.mss() as sct:
+            monitor = sct.monitors[self.monitor]
+            raw = sct.grab(monitor)
+            return PIL_Image.frombytes("RGB", raw.size, raw.rgb) if PIL_Image else None
+
+# Global instance
+_screenshot_buffer = ScreenBuffer(fps=5.0)
+
 async def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
     """Execute a single automation command and return the result.
 
@@ -1005,7 +1094,7 @@ async def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
         elif action == "batch":
             results: list[dict[str, Any]] = []
             for c in cmd["commands"]:
-                r = execute_command(c)
+                r = await execute_command(c)
                 results.append({"cmd": c.get("action"), "result": r})
                 if not r.get("success"):
                     break
@@ -1157,7 +1246,7 @@ async def ws_handler(websocket: WebSocket) -> None:
                 continue
 
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, execute_command, cmd)
+            result = await execute_command(cmd)
             await websocket.send_json(result)
 
     except WebSocketDisconnect:

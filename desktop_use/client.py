@@ -44,6 +44,16 @@ except ImportError:
     sys.exit(1)
 
 
+class DesktopConnectionError(Exception):
+    """Raised when desktop-use server is unreachable."""
+    pass
+
+
+class TextNotFoundError(Exception):
+    """Raised when text is not found on screen."""
+    pass
+
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 DEFAULT_HOST = "localhost"
@@ -99,6 +109,9 @@ class DesktopAgent:
             self.base_url = f"http://{host}:{port}"
         self.timeout = timeout
 
+    def __repr__(self) -> str:
+        return f"DesktopAgent(url={self.base_url!r})"
+
     # ── Low-level transport ───────────────────────────────────────────────
 
     def _post(self, action: str, **kwargs: Any) -> dict[str, Any]:
@@ -110,6 +123,9 @@ class DesktopAgent:
 
         Returns:
             Server response as a dict.
+
+        Raises:
+            DesktopConnectionError: If server is unreachable.
         """
         payload: dict[str, Any] = {"action": action, **kwargs}
         try:
@@ -121,15 +137,17 @@ class DesktopAgent:
             resp.raise_for_status()
             return resp.json()
         except requests.ConnectionError:
-            return {
-                "success": False,
-                "error": (
-                    "Server is not running. "
-                    "Start it with: python -m desktop_use.server"
-                ),
-            }
+            raise DesktopConnectionError(
+                f"Cannot reach desktop-use server at {self.base_url}. "
+                "Is it running on Windows? Run: desktop-use serve"
+            )
         except requests.Timeout:
-            return {"success": False, "error": f"Request timed out after {self.timeout}s"}
+            raise DesktopConnectionError(
+                f"Server timed out after {self.timeout}s. "
+                "OCR/template matching can be slow - try increasing timeout."
+            )
+        except DesktopConnectionError:
+            raise
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
@@ -167,6 +185,12 @@ class DesktopAgent:
             ``{"status": "ok", "version": ..., "ocr": bool, "opencv": bool, ...}``
         """
         return self._get("health")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass  # No resources to clean up
 
     # ── Screenshot ────────────────────────────────────────────────────────
 

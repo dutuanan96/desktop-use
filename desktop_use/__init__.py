@@ -9,4 +9,6 @@ __version__ = "0.1.0"
 
 from desktop_use.client import DesktopAgent
 
-__all__ = ["DesktopAgent"]
+from desktop_use.client import DesktopConnectionError, TextNotFoundError
+
+__all__ = ["DesktopAgent", "DesktopConnectionError", "TextNotFoundError", "__version__"]
