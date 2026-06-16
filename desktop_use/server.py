@@ -640,7 +640,7 @@ def post_click(hwnd: int, x: int, y: int, button: str = "left", double: bool = F
     elif button == "right":
         down_msg = win32con.WM_RBUTTONDOWN
         up_msg = win32con.WM_RBUTTONUP
-        wparam = win32con.WM_RBUTTON
+        wparam = win32con.MK_RBUTTON
     else:
         down_msg = win32con.WM_MBUTTONDOWN
         up_msg = win32con.WM_MBUTTONUP
@@ -1161,7 +1161,7 @@ async def batch(body: dict[str, Any]) -> JSONResponse:
     """
     results: list[dict[str, Any]] = []
     for cmd in body.get("commands", []):
-        r = execute_command(cmd)
+        r = await execute_command(cmd)
         results.append({"cmd": cmd.get("action"), "result": r})
         if not r.get("success"):
             break
