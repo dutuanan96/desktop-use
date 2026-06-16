@@ -118,6 +118,7 @@ except ImportError:
 
 # Optional: RapidOCR
 ocr_engine = None
+ocr_type = None
 try:
     from rapidocr_onnxruntime import RapidOCR
 
@@ -279,7 +280,14 @@ class ScreenshotEngine:
             else:
                 monitor = sct.monitors[1]
             img = sct.grab(monitor)
-            mss_tools.to_png(img.rgb, img.size, output=filepath)
+            try:
+                mss_tools.to_png(img.rgb, img.size, output=filepath)
+            except AttributeError:
+                if PIL_Image:
+                    pil_img = PIL_Image.frombytes("RGB", img.size, img.rgb)
+                    pil_img.save(filepath, "PNG")
+                else:
+                    raise RuntimeError("Neither mss.tools nor PIL available")
 
         pil_img = PIL_Image.open(filepath) if PIL_Image else None
         return filepath, pil_img
@@ -715,7 +723,58 @@ def _resolve_template(path: str) -> str:
     return str(TEMPLATE_DIR / path)
 
 
-def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
+
+def run_ocr(image_path: str) -> list:
+    """Run OCR in a blocking context (for use with asyncio.to_thread)."""
+    global ocr_type
+    if ocr_engine is None:
+        raise RuntimeError("No OCR engine available")
+    
+    items = []
+    if ocr_type == "paddle":
+        result = ocr_engine.predict(image_path)
+        if result and len(result) > 0:
+            ocr_result = result[0]
+            texts = ocr_result.get("rec_texts", [])
+            scores = ocr_result.get("rec_scores", [])
+            polys = ocr_result.get("rec_polys", [])
+            for i, text in enumerate(texts):
+                if not text or str(text).strip() == "":
+                    continue
+                score = scores[i] if i < len(scores) else 0.0
+                poly = polys[i] if i < len(polys) else []
+                if len(poly) >= 4:
+                    box = poly
+                    cx = sum(p[0] for p in box) / 4
+                    cy = sum(p[1] for p in box) / 4
+                    x1, y1 = min(p[0] for p in box), min(p[1] for p in box)
+                    x2, y2 = max(p[0] for p in box), max(p[1] for p in box)
+                else:
+                    cx, cy, x1, y1, x2, y2 = 0, 0, 0, 0, 0, 0
+                items.append({
+                    "text": str(text),
+                    "confidence": round(float(score), 3),
+                    "center": [int(cx), int(cy)],
+                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                })
+    else:
+        result, _ = ocr_engine(image_path)
+        if result:
+            for line in result:
+                box, text, confidence = line
+                cx = sum(p[0] for p in box) / len(box)
+                cy = sum(p[1] for p in box) / len(box)
+                x1, y1 = min(p[0] for p in box), min(p[1] for p in box)
+                x2, y2 = max(p[0] for p in box), max(p[1] for p in box)
+                items.append({
+                    "text": text,
+                    "confidence": round(confidence, 3),
+                    "center": [int(cx), int(cy)],
+                    "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                })
+    return items
+
+async def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
     """Execute a single automation command and return the result.
 
     Supported actions:
@@ -745,7 +804,12 @@ def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
             result: dict[str, Any] = {"success": True, "path": filepath}
 
             if cmd.get("ocr") and ocr_engine is not None:
-                result["ocr"] = ocr.ocr_image(filepath)
+                # Run OCR in thread pool to avoid blocking
+                try:
+                    loop = asyncio.get_event_loop()
+                    result["ocr"] = await loop.run_in_executor(None, run_ocr, filepath)
+                except RuntimeError:
+                    result["ocr"] = ocr.ocr_image(filepath)
 
             if cmd.get("base64"):
                 with open(filepath, "rb") as f:
@@ -761,10 +825,27 @@ def execute_command(cmd: dict[str, Any]) -> dict[str, Any]:
             return {"success": True, "data": data, "count": len(data)}
 
         elif action == "find_text":
-            match = ocr.find_text(cmd["text"], cmd.get("region"))
-            if match:
-                return {"success": True, "data": match}
-            return {"success": False, "error": f"Text not found: {cmd['text']}"}
+            # Take screenshot first, then OCR in thread pool
+            try:
+                region = cmd.get("region")
+                filepath, _ = screenshot_engine.capture(region)
+                
+                # Run OCR in thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                items = await loop.run_in_executor(None, run_ocr, filepath)
+                
+                # Find matching text
+                target = cmd["text"].lower()
+                match = None
+                for item in items:
+                    if target in item["text"].lower():
+                        match = item
+                        break
+                if match:
+                    return {"success": True, "data": match}
+                return {"success": False, "error": f"Text not found: {cmd['text']}"}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
 
         elif action == "find_all_text":
             matches = ocr.find_all_text(cmd["text"], cmd.get("region"))
@@ -977,7 +1058,7 @@ async def action(cmd: dict[str, Any]) -> JSONResponse:
 
     See :func:`execute_command` for the list of supported actions.
     """
-    result = execute_command(cmd)
+    result = await execute_command(cmd)
     return JSONResponse(content=result)
 
 
