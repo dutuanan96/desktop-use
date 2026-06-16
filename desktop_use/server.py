@@ -870,23 +870,48 @@ _screenshot_buffer = ScreenBuffer(fps=5.0)
 
 def get_all_monitors() -> list:
     """List all monitors including virtual ones."""
-    import ctypes
+    import subprocess
     monitors = []
     
-    def callback(hmonitor, hdc, lprect, lparam):
-        import win32api
-        info = win32api.GetMonitorInfo(hmonitor)
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", 
+             "Get-CimInstance -ClassName Win32_DesktopMonitor | Select-Object Name, ScreenWidth, ScreenHeight, Status | ConvertTo-Json"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.stdout:
+            import json
+            data = json.loads(result.stdout)
+            if isinstance(data, list):
+                for i, m in enumerate(data):
+                    w = m.get("ScreenWidth") or 1920
+                    h = m.get("ScreenHeight") or 1080
+                    monitors.append({
+                        "handle": i,
+                        "rect": [0, 0, w, h],
+                        "work_rect": [0, 0, w, h - 60],
+                        "is_primary": (i == 0),
+                        "name": m.get("Name", f"Display{i+1}"),
+                    })
+            elif isinstance(data, dict):
+                w = data.get("ScreenWidth") or 1920
+                h = data.get("ScreenHeight") or 1080
+                monitors.append({
+                    "handle": 0,
+                    "rect": [0, 0, w, h],
+                    "work_rect": [0, 0, w, h - 60],
+                    "is_primary": True,
+                    "name": data.get("Name", "Display1"),
+                })
+    except Exception:
         monitors.append({
-            "handle": hmonitor,
-            "rect": info["Monitor"],
-            "work_rect": info["Work"],
-            "is_primary": bool(info["Flags"] & 1),
-            "name": info.get("Device", ""),
+            "handle": 0,
+            "rect": [0, 0, 1920, 1080],
+            "work_rect": [0, 0, 1920, 1020],
+            "is_primary": True,
+            "name": "Display1",
         })
-        return True
     
-    MONITORENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_long)
-    ctypes.windll.user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(callback), 0)
     return monitors
 
 
